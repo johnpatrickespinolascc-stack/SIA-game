@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Blitz: Account Edition</title>
+    <style>
+        :root {
+            --neon-blue: #00d4ff;
+            --neon-pink: #ff007f;
+            --bg-dark: #0a0a0c;
+            --card-bg: #16161a;
+            --gold: #ffd700;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .main-wrapper {
+            display: flex;
+            gap: 20px;
+            max-width: 950px;
+            width: 95%;
+            height: 80vh;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+            border: 1px solid #333;
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .leaderboard-side {
+            background: #111;
+            padding: 20px;
+            border-radius: 20px;
+            border: 1px solid #333;
+            flex: 1;
+            min-width: 260px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        input {
+            width: 85%; padding: 12px; margin: 8px 0;
+            background: #222; border: 1px solid #444; color: white; border-radius: 8px; text-align: center;
+            font-size: 1rem;
+        }
+
+        .btn {
+            background: var(--neon-blue); color: black; border: none; padding: 12px 25px;
+            font-weight: bold; border-radius: 50px; cursor: pointer; width: 100%;
+            margin-top: 10px; transition: 0.3s;
+        }
+
+        .link-btn {
+            background: none; border: none; color: #888; text-decoration: underline;
+            cursor: pointer; margin-top: 15px; font-size: 0.9rem;
+        }
+
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
+        .cell {
+            background: #1e1e24; height: 65px; display: flex; align-items: center;
+            justify-content: center; font-size: 1.5rem; border-radius: 10px; cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .cell.selected { border-color: var(--neon-blue); background: #2a2a35; }
+        
+        #timer-bar { width: 100%; height: 6px; background: var(--neon-blue); transition: width 0.1s linear; }
+        .lb-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #222; font-size: 0.85rem; }
+        .hidden { display: none !important; }
+
+        @media (max-width: 750px) {
+            .main-wrapper { flex-direction: column; height: auto; overflow-y: visible; }
+            body { overflow-y: auto; padding: 20px 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-wrapper">
+    <div class="leaderboard-side">
+        <h3 style="color: var(--neon-pink); margin: 0 0 15px 0;">LIVE RANKINGS</h3>
+        <div id="lb-list"></div>
+        <button id="logout-btn" class="btn hidden" style="background: #333; color: white; margin-top: auto;" onclick="logout()">LOGOUT</button>
+    </div>
+
+    <div class="container">
+        
+        <div id="auth-screen">
+            <h1 id="auth-title">LOGIN</h1>
+            <input type="text" id="user-input" placeholder="Username">
+            <input type="password" id="pass-input" placeholder="Password">
+            <button class="btn" id="auth-main-btn" onclick="handleAuth()">ENTER SYSTEM</button>
+            <button class="link-btn" id="auth-toggle-btn" onclick="toggleAuthMode()">Need an account? Register</button>
+        </div>
+
+        <div id="dashboard" class="hidden">
+            <h2 id="welcome-msg">Hi, User</h2>
+            <p style="color: #888;">Select Mission Difficulty:</p>
+            <div style="display:flex; gap:10px; margin-bottom: 20px;">
+                <button class="btn" onclick="setDiff('easy')">EASY</button>
+                <button class="btn" onclick="setDiff('medium')">MED</button>
+                <button class="btn" onclick="setDiff('hard')">HARD</button>
+            </div>
+            <button class="btn" style="background: var(--neon-pink); font-size: 1.2rem;" onclick="startGame()">START GAME</button>
+        </div>
+
+        <div id="game-screen" class="hidden">
+            <div id="target-num" style="font-size: 3.5rem; color: var(--neon-pink); text-shadow: 0 0 10px var(--neon-pink);">0</div>
+            <div style="width:100%; background:#333; margin: 15px 0; border-radius: 5px;"><div id="timer-bar"></div></div>
+            <div class="grid" id="grid"></div>
+            <h3 id="score-display" style="margin-top: 20px;">Score: 0</h3>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    let isRegistering = false;
+    let currentUser = "";
+    let difficulty = "easy";
+    let score = 0, timeLeft = 100, target = 0, selected = [], timerInterval;
+
+    const diffSettings = {
+        easy: { max: 10, speed: 0.5, bonus: 20 },
+        medium: { max: 20, speed: 1.0, bonus: 15 },
+        hard: { max: 50, speed: 1.8, bonus: 10 }
+    };
+
+    window.onload = updateLeaderboard;
+
+    function toggleAuthMode() {
+        isRegistering = !isRegistering;
+        document.getElementById('auth-title').innerText = isRegistering ? "REGISTER" : "LOGIN";
+        document.getElementById('auth-main-btn').innerText = isRegistering ? "CREATE ACCOUNT" : "ENTER SYSTEM";
+        document.getElementById('auth-toggle-btn').innerText = isRegistering ? "Already have an account? Login" : "Need an account? Register";
+    }
+
+    function handleAuth() {
+        const user = document.getElementById('user-input').value.trim();
+        const pass = document.getElementById('pass-input').value.trim();
+
+        if(!user || !pass) return alert("Please fill in all fields.");
+
+        if(isRegistering) {
+            if(localStorage.getItem('auth_' + user)) return alert("User already exists!");
+            localStorage.setItem('auth_' + user, pass);
+            alert("Registration successful! Please login.");
+            toggleAuthMode();
+        } else {
+            const storedPass = localStorage.getItem('auth_' + user);
+            if(storedPass === pass) {
+                loginSuccess(user);
+            } else {
+                alert("Invalid username or password.");
+            }
+        }
+    }
+
+    function loginSuccess(name) {
+        currentUser = name;
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        document.getElementById('logout-btn').classList.remove('hidden');
+        document.getElementById('welcome-msg').innerText = "Agent: " + currentUser;
+    }
+
+    function setDiff(d) {
+        difficulty = d;
+        alert("Difficulty locked: " + d.toUpperCase());
+    }
+
+    function startGame() {
+        document.getElementById('dashboard').classList.add('hidden');
+        document.getElementById('game-screen').classList.remove('hidden');
+        score = 0; timeLeft = 100;
+        document.getElementById('score-display').innerText = "Score: 0";
+        nextRound();
+        timerInterval = setInterval(() => {
+            timeLeft -= diffSettings[difficulty].speed;
+            document.getElementById('timer-bar').style.width = timeLeft + "%";
+            if(timeLeft <= 0) endGame();
+        }, 100);
+    }
+
+    function nextRound() {
+        const grid = document.getElementById('grid'); grid.innerHTML = '';
+        let nums = [];
+        for(let i=0; i<9; i++) {
+            let n = Math.floor(Math.random() * diffSettings[difficulty].max) + 1;
+            nums.push(n);
+            let div = document.createElement('div');
+            div.className = 'cell'; div.innerText = n;
+            div.onclick = () => {
+                if(div.classList.contains('selected')) return;
+                div.classList.add('selected');
+                selected.push({el: div, val: n});
+                if(selected.length === 2) checkMatch();
+            };
+            grid.appendChild(div);
+        }
+        let n1 = nums[0], n2 = nums[1];
+        target = [n1+n2, Math.abs(n1-n2), n1*n2][Math.floor(Math.random()*3)] || n1+n2;
+        document.getElementById('target-num').innerText = target;
+    }
+
+    function checkMatch() {
+        let v1 = selected[0].val, v2 = selected[1].val;
+        if([v1+v2, v1-v2, v2-v1, v1*v2].includes(target)) {
+            score++; timeLeft = Math.min(timeLeft + diffSettings[difficulty].bonus, 100);
+            document.getElementById('score-display').innerText = "Score: " + score;
+            setTimeout(nextRound, 200);
+        }
+        setTimeout(() => {
+            selected.forEach(s => s.el.classList.remove('selected'));
+            selected = [];
+        }, 300);
+    }
+
+    function endGame() {
+        clearInterval(timerInterval);
+        let lb = JSON.parse(localStorage.getItem('blitzLB')) || [];
+        lb.push({user: currentUser, score: score});
+        lb.sort((a,b) => b.score - a.score);
+        localStorage.setItem('blitzLB', JSON.stringify(lb.slice(0, 10)));
+        
+        updateLeaderboard();
+        alert("TIME EXPIRED! Final Score: " + score);
+        document.getElementById('game-screen').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+    }
+
+    function updateLeaderboard() {
+        let lb = JSON.parse(localStorage.getItem('blitzLB')) || [];
+        document.getElementById('lb-list').innerHTML = lb.map((s, i) => `
+            <div class="lb-item">
+                <span>${i + 1}. ${s.user}</span>
+                <span style="color: var(--neon-blue); font-weight: bold;">${s.score}</span>
+            </div>
+        `).join('') || "<p style='color:#555'>No scores yet</p>";
+    }
+
+    function logout() { location.reload(); }
+</script>
+</body>
+</html>
